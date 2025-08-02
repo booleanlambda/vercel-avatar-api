@@ -1,47 +1,5 @@
 // This function runs on Vercel's servers, not in the user's browser.
 
-// Function to fetch trees non-recursively when truncated
-async function fetchNonRecursively(res, GITHUB_USER, GITHUB_REPO, GITHUB_PAT) {
-  const allFiles = [];
-  
-  // Start with the avatars directory
-  const dirsToProcess = ['avatars'];
-  
-  while (dirsToProcess.length > 0) {
-    const currentDir = dirsToProcess.shift();
-    const apiUrl = `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/contents/${currentDir}`;
-    
-    try {
-      const response = await fetch(apiUrl, {
-        headers: {
-          'Authorization': `token ${GITHUB_PAT}`,
-          'Accept': 'application/vnd.github.v3+json',
-        },
-      });
-      
-      if (!response.ok) {
-        console.error(`Failed to fetch ${currentDir}: ${response.status}`);
-        continue;
-      }
-      
-      const items = await response.json();
-      
-      for (const item of items) {
-        if (item.type === 'file' && (item.name.endsWith('.jpg') || item.name.endsWith('.png'))) {
-          allFiles.push(item.path);
-        } else if (item.type === 'dir') {
-          dirsToProcess.push(item.path);
-        }
-      }
-    } catch (error) {
-      console.error(`Error fetching ${currentDir}:`, error);
-    }
-  }
-  
-  res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
-  res.status(200).json({ avatars: allFiles });
-}
-
 export default async function handler(req, res) {
   // --- CORS Headers ---
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -79,26 +37,11 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
-    // Check if results are truncated
-    console.log('Is truncated:', data.truncated);
-    console.log('Total items returned:', data.tree.length);
-    
-    if (data.truncated) {
-      // If truncated, we need to fetch trees non-recursively
-      return await fetchNonRecursively(res, GITHUB_USER, GITHUB_REPO, GITHUB_PAT);
-    }
-
     // --- CORRECTED LOGIC ---
-    // Now filters for files ending in .jpg OR .png within the 'avatars/' directory and all subdirectories
+    // Now filters for files ending in .jpg OR .png within the 'avatars/' directory.
     const avatarPaths = data.tree
-      .filter(item => {
-        return item.type === 'blob' && // Only files, not directories
-               item.path.startsWith('avatars/') && // In avatars directory or subdirectories
-               (item.path.endsWith('.jpg') || item.path.endsWith('.png')); // Image files
-      })
-      .map(item => item.path);
-
-    console.log('Final avatar paths found:', avatarPaths.length);
+      .map(file => file.path)
+      .filter(path => path.startsWith('avatars/') && (path.endsWith('.jpg') || path.endsWith('.png')));
 
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
     res.status(200).json({ avatars: avatarPaths });
@@ -108,3 +51,4 @@ export default async function handler(req, res) {
     res.status(500).json({ error: 'Failed to fetch avatar list from GitHub.' });
   }
 }
+
