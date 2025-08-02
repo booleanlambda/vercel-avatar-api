@@ -1,0 +1,12 @@
+{
+  "name": "avatar-api",
+  "version": "1.0.0",
+  "description": "API to list avatars from a GitHub repo.",
+  "main": "api/get-avatars.js",
+  "scripts": {
+    "start": "node api/get-avatars.js"
+  },
+  "author": "",
+  "license": "ISC"
+}
+
