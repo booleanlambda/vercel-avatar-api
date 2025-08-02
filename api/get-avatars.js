@@ -1,9 +1,8 @@
-// This function runs on Vercel's servers, not in the user's browser.
-
+// This function runs on Vercel's servers
 export default async function handler(req, res) {
   // --- CORS Headers ---
   res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*'); // Allow any origin
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
 
@@ -11,7 +10,7 @@ export default async function handler(req, res) {
     res.status(200).end();
     return;
   }
-  
+
   const GITHUB_USER = 'alertalerted-dotcom';
   const GITHUB_REPO = 'modern-art-avatars';
   const BRANCH = 'main';
@@ -21,27 +20,45 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'GitHub Personal Access Token is not configured.' });
   }
 
-  const apiUrl = `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/git/trees/${BRANCH}?recursive=1`;
-
   try {
-    const response = await fetch(apiUrl, {
+    // --- STEP 1: Resolve branch → commit SHA
+    const branchUrl = `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/branches/${BRANCH}`;
+    const branchRes = await fetch(branchUrl, {
       headers: {
         'Authorization': `token ${GITHUB_PAT}`,
         'Accept': 'application/vnd.github.v3+json',
       },
     });
 
-    if (!response.ok) {
-      throw new Error(`GitHub API responded with ${response.status}`);
+    if (!branchRes.ok) {
+      throw new Error(`Failed to fetch branch info: ${branchRes.status}`);
     }
 
-    const data = await response.json();
+    const branchData = await branchRes.json();
+    const treeSha = branchData.commit.commit.tree.sha;
 
-    // --- CORRECTED LOGIC ---
-    // Now filters for files ending in .jpg OR .png within the 'avatars/' directory.
-    const avatarPaths = data.tree
+    // --- STEP 2: Get full recursive tree from tree SHA
+    const treeUrl = `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/git/trees/${treeSha}?recursive=1`;
+    const treeRes = await fetch(treeUrl, {
+      headers: {
+        'Authorization': `token ${GITHUB_PAT}`,
+        'Accept': 'application/vnd.github.v3+json',
+      },
+    });
+
+    if (!treeRes.ok) {
+      throw new Error(`Failed to fetch recursive tree: ${treeRes.status}`);
+    }
+
+    const treeData = await treeRes.json();
+
+    // --- Filter avatars by file type & path
+    const avatarPaths = treeData.tree
       .map(file => file.path)
-      .filter(path => path.startsWith('avatars/') && (path.endsWith('.jpg') || path.endsWith('.png')));
+      .filter(path =>
+        path.startsWith('avatars/') &&
+        (path.endsWith('.jpg') || path.endsWith('.png'))
+      );
 
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
     res.status(200).json({ avatars: avatarPaths });
@@ -51,4 +68,3 @@ export default async function handler(req, res) {
     res.status(500).json({ error: 'Failed to fetch avatar list from GitHub.' });
   }
 }
-
