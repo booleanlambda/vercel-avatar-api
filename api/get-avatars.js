@@ -1,7 +1,9 @@
+// This function runs on Vercel's servers, not in the user's browser.
+
 export default async function handler(req, res) {
   // --- CORS Headers ---
   res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Origin', '*'); // Allow any origin
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
 
@@ -9,7 +11,7 @@ export default async function handler(req, res) {
     res.status(200).end();
     return;
   }
-
+  
   const GITHUB_USER = 'alertalerted-dotcom';
   const GITHUB_REPO = 'modern-art-avatars';
   const BRANCH = 'main';
@@ -19,35 +21,31 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'GitHub Personal Access Token is not configured.' });
   }
 
+  const apiUrl = `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/git/trees/${BRANCH}?recursive=1`;
+
   try {
-    async function fetchFolderContents(path = '') {
-      const url = `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/contents/${path}?ref=${BRANCH}`;
-      const res = await fetch(url, {
-        headers: {
-          'Authorization': `token ${GITHUB_PAT}`,
-          'Accept': 'application/vnd.github.v3+json',
-        },
-      });
+    const response = await fetch(apiUrl, {
+      headers: {
+        'Authorization': `token ${GITHUB_PAT}`,
+        'Accept': 'application/vnd.github.v3+json',
+      },
+    });
 
-      if (!res.ok) {
-        throw new Error(`GitHub API error ${res.status} for ${path}`);
-      }
-
-      const data = await res.json();
-      let files = [];
-
-      for (const item of data) {
-        if (item.type === 'file' && (item.name.endsWith('.png') || item.name.endsWith('.jpg'))) {
-          files.push(item.path);
-        } else if (item.type === 'dir') {
-          files = files.concat(await fetchFolderContents(item.path));
-        }
-      }
-
-      return files;
+    if (!response.ok) {
+      throw new Error(`GitHub API responded with ${response.status}`);
     }
 
-    const avatarPaths = await fetchFolderContents('avatars');
+    const data = await response.json();
+
+    // --- CORRECTED LOGIC ---
+    // Now filters for files ending in .jpg OR .png within the 'avatars/' directory and all subdirectories
+    const avatarPaths = data.tree
+      .filter(item => {
+        return item.type === 'blob' && // Only files, not directories
+               item.path.startsWith('avatars/') && // In avatars directory or subdirectories
+               (item.path.endsWith('.jpg') || item.path.endsWith('.png')); // Image files
+      })
+      .map(item => item.path);
 
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
     res.status(200).json({ avatars: avatarPaths });
