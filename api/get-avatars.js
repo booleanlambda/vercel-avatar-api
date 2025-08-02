@@ -1,4 +1,3 @@
-// This function runs on Vercel's servers
 export default async function handler(req, res) {
   // --- CORS Headers ---
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -21,44 +20,34 @@ export default async function handler(req, res) {
   }
 
   try {
-    // --- STEP 1: Resolve branch → commit SHA
-    const branchUrl = `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/branches/${BRANCH}`;
-    const branchRes = await fetch(branchUrl, {
-      headers: {
-        'Authorization': `token ${GITHUB_PAT}`,
-        'Accept': 'application/vnd.github.v3+json',
-      },
-    });
+    async function fetchFolderContents(path = '') {
+      const url = `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/contents/${path}?ref=${BRANCH}`;
+      const res = await fetch(url, {
+        headers: {
+          'Authorization': `token ${GITHUB_PAT}`,
+          'Accept': 'application/vnd.github.v3+json',
+        },
+      });
 
-    if (!branchRes.ok) {
-      throw new Error(`Failed to fetch branch info: ${branchRes.status}`);
+      if (!res.ok) {
+        throw new Error(`GitHub API error ${res.status} for ${path}`);
+      }
+
+      const data = await res.json();
+      let files = [];
+
+      for (const item of data) {
+        if (item.type === 'file' && (item.name.endsWith('.png') || item.name.endsWith('.jpg'))) {
+          files.push(item.path);
+        } else if (item.type === 'dir') {
+          files = files.concat(await fetchFolderContents(item.path));
+        }
+      }
+
+      return files;
     }
 
-    const branchData = await branchRes.json();
-    const treeSha = branchData.commit.commit.tree.sha;
-
-    // --- STEP 2: Get full recursive tree from tree SHA
-    const treeUrl = `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/git/trees/${treeSha}?recursive=1`;
-    const treeRes = await fetch(treeUrl, {
-      headers: {
-        'Authorization': `token ${GITHUB_PAT}`,
-        'Accept': 'application/vnd.github.v3+json',
-      },
-    });
-
-    if (!treeRes.ok) {
-      throw new Error(`Failed to fetch recursive tree: ${treeRes.status}`);
-    }
-
-    const treeData = await treeRes.json();
-
-    // --- Filter avatars by file type & path
-    const avatarPaths = treeData.tree
-      .map(file => file.path)
-      .filter(path =>
-        path.startsWith('avatars/') &&
-        (path.endsWith('.jpg') || path.endsWith('.png'))
-      );
+    const avatarPaths = await fetchFolderContents('avatars');
 
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
     res.status(200).json({ avatars: avatarPaths });
