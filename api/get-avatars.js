@@ -2,20 +2,16 @@
 
 export default async function handler(req, res) {
   // --- CORS Headers ---
-  // This allows your local development server (and any other website)
-  // to make requests to this API endpoint.
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*'); // Allow any origin
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
 
-  // Handle pre-flight OPTIONS request for CORS
   if (req.method === 'OPTIONS') {
     res.status(200).end();
     return;
   }
   
-  // --- Original Logic ---
   const GITHUB_USER = 'alertalerted-dotcom';
   const GITHUB_REPO = 'modern-art-avatars';
   const BRANCH = 'main';
@@ -41,9 +37,11 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
+    // --- CORRECTED LOGIC ---
+    // Now filters for files ending in .jpg OR .png within the 'avatars/' directory.
     const avatarPaths = data.tree
       .map(file => file.path)
-      .filter(path => path.startsWith('avatars/') && path.endsWith('.png'));
+      .filter(path => path.startsWith('avatars/') && (path.endsWith('.jpg') || path.endsWith('.png')));
 
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
     res.status(200).json({ avatars: avatarPaths });
